@@ -8,7 +8,34 @@ class ViewController: UIViewController {
     @IBOutlet var sceneView: ARSCNView!
     
     // MARK: - Properties
+    /// Visualize planes
+    var arePlanesHidden = true {
+        didSet {
+            planeNodes.forEach { $0.isHidden = arePlanesHidden }
+        }
+    }
+    
     let configuration = ARWorldTrackingConfiguration()
+    
+    /// Last node placed by user
+    var lastNode: SCNNode?
+    
+    /// Minimum distance between objects placed when moving
+    let minimumDistance: Float = 0.01 //Можно использовать SCNBoundingVolume для опред размеров объекта, чтобы ставить след объект
+                                      // вне границ предыдущего
+    var minDist: Float {
+        if lastNode != nil {
+            let min = lastNode!.boundingBox.min
+            let max = lastNode!.boundingBox.max
+            let x = max.x - min.x
+            let y = max.y - min.y
+            let z = max.z - min.z
+           
+            return (x*x + y*y + z*z)
+        } else {
+            return 0
+        }
+    }
     
     enum ObjectPlacementMode {
         case freeform, plane, image
@@ -24,6 +51,7 @@ class ViewController: UIViewController {
     
     /// The node for the object currently selected by the user
     var selectedNode: SCNNode?
+    
     
     // MARK: - Methods
     /// Adds an object in 20 cm in front of the camera
@@ -68,9 +96,33 @@ class ViewController: UIViewController {
     
     // Add object on scene
     func addNode(_ node: SCNNode, to parentNode: SCNNode) {
+        
+        // Check that the object is not too close to the previous one when moving
+        if let lastNode = lastNode {
+            let lastPosition = lastNode.position
+            let newPosition = node.position
+            
+            let x = lastPosition.x - newPosition.x
+            let y = lastPosition.y - newPosition.y
+            let z = lastPosition.z - newPosition.z
+            
+            let distanceSquare = sqrtf(x*x + y*y + z*z)
+            let minimumDistanceSquare = minimumDistance*minimumDistance
+            let minDistSquare = sqrtf(minDist)
+            guard minDistSquare <= distanceSquare else { return }
+//            print(minDistSquare, distanceSquare)
+//            guard minimumDistanceSquare < distanceSquare else { return }
+        }
+        
         // Clone node for creating separate copies of the object
         let clonedNode = node.clone()
         
+        // Remember last node to make minimum distance between it and next node when moving
+        lastNode = clonedNode
+//        let bxmax = lastNode?.boundingBox.max
+//        let bxmin = lastNode?.boundingBox.min
+//        let dif = CGFloat(bxmax!.x - bxmin!.x)
+//        print(dif)
         // Remember object placed for undo
         objectsPlaced.append(clonedNode)
 
@@ -88,13 +140,7 @@ class ViewController: UIViewController {
         }
     }
     
-    func reloadConfiguration() {
-        configuration.planeDetection = .horizontal
-        sceneView.session.run(configuration)
-    }
-    
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        super.touchesBegan(touches, with: event)
+    func process(_ touches: Set<UITouch>) {
         
         guard let touch = touches.first, let selectedNode = selectedNode else { return }
         let point = touch.location(in: sceneView)
@@ -109,10 +155,28 @@ class ViewController: UIViewController {
         }
     }
     
+    func reloadConfiguration() {
+        configuration.planeDetection = .horizontal
+        sceneView.session.run(configuration)
+    }
+    
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        lastNode = nil
+        process(touches)
+    }
+    
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesMoved(touches, with: event)
+        
+        process(touches)
+    }
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
         sceneView.delegate = self
+//        sceneView.debugOptions = .showBoundingBoxes
         sceneView.autoenablesDefaultLighting = true
     }
     
@@ -131,10 +195,13 @@ class ViewController: UIViewController {
         switch sender.selectedSegmentIndex {
         case 0:
             objectMode = .freeform
+            arePlanesHidden = true
         case 1:
             objectMode = .plane
+            arePlanesHidden = false
         case 2:
             objectMode = .image
+            arePlanesHidden = true
         default:
             break
         }
@@ -151,6 +218,8 @@ extension ViewController: OptionsViewControllerDelegate {
     
     func togglePlaneVisualization() {
         dismiss(animated: true, completion: nil)
+        guard objectMode == .plane else { return }
+        arePlanesHidden.toggle()
     }
     
     func undoLastObject() {
@@ -182,6 +251,7 @@ extension ViewController: ARSCNViewDelegate {
     // Add plane node found
     func nodeAdded(_ node: SCNNode, for anchor: ARPlaneAnchor) {
         let planeNode = createFloor(planeAnchor: anchor)
+        planeNode.isHidden = arePlanesHidden
         
         // Add plane node to the list of plane nodes
         planeNodes.append(planeNode)
