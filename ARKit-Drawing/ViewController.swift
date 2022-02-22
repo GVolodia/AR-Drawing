@@ -21,19 +21,18 @@ class ViewController: UIViewController {
     var lastNode: SCNNode?
     
     /// Minimum distance between objects placed when moving
-    let minimumDistance: Float = 0.01 //Можно использовать SCNBoundingVolume для опред размеров объекта, чтобы ставить след объект
-                                      // вне границ предыдущего
-    var minDist: Float {
-        if lastNode != nil {
-            let min = lastNode!.boundingBox.min
-            let max = lastNode!.boundingBox.max
-            let x = max.x - min.x
-            let y = max.y - min.y
-            let z = max.z - min.z
+    var minimumDistance: Float {
+        if selectedNode != nil {
+            
+            let min = selectedNode!.boundingBox.min
+            let max = selectedNode!.boundingBox.max
+            let x = (max.x - min.x)
+            let y = (max.y - min.y)
+            let z = (max.z - min.z)
            
-            return (x*x + y*y + z*z)
+            return sqrtf(x*x + y*y + z*z)
         } else {
-            return 0
+            return 0.05
         }
     }
     
@@ -99,19 +98,14 @@ class ViewController: UIViewController {
         
         // Check that the object is not too close to the previous one when moving
         if let lastNode = lastNode {
+            // Geting distance between last node and current node
             let lastPosition = lastNode.position
             let newPosition = node.position
-            
-            let x = lastPosition.x - newPosition.x
-            let y = lastPosition.y - newPosition.y
-            let z = lastPosition.z - newPosition.z
-            
-            let distanceSquare = sqrtf(x*x + y*y + z*z)
-            let minimumDistanceSquare = minimumDistance*minimumDistance
-            let minDistSquare = sqrtf(minDist)
-            guard minDistSquare <= distanceSquare else { return }
-//            print(minDistSquare, distanceSquare)
-//            guard minimumDistanceSquare < distanceSquare else { return }
+            let distanceBetweenNodes = newPosition.distance(to: lastPosition)
+
+            guard minimumDistance < distanceBetweenNodes else { return }
+//            print(minimumDistance, distanceBetweenNodes)
+
         }
         
         // Clone node for creating separate copies of the object
@@ -119,10 +113,7 @@ class ViewController: UIViewController {
         
         // Remember last node to make minimum distance between it and next node when moving
         lastNode = clonedNode
-//        let bxmax = lastNode?.boundingBox.max
-//        let bxmin = lastNode?.boundingBox.min
-//        let dif = CGFloat(bxmax!.x - bxmin!.x)
-//        print(dif)
+
         // Remember object placed for undo
         objectsPlaced.append(clonedNode)
 
@@ -176,7 +167,7 @@ class ViewController: UIViewController {
         super.viewDidLoad()
         
         sceneView.delegate = self
-//        sceneView.debugOptions = .showBoundingBoxes
+        sceneView.debugOptions = .showBoundingBoxes
         sceneView.autoenablesDefaultLighting = true
     }
     
@@ -289,5 +280,11 @@ extension ViewController: ARSCNViewDelegate {
         
         // Position the plane in the center
         planeNode.simdPosition = anchor.center
+    }
+}
+
+extension SCNVector3 {
+    func distance(to vector: SCNVector3) -> Float {
+        return simd_distance(simd_float3(self), simd_float3(vector))
     }
 }
