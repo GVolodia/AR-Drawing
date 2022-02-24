@@ -158,7 +158,7 @@ class OptionsContainerViewController: UIViewController, UINavigationControllerDe
         case .torus:
             geometry = SCNTorus(ringRadius: meters*1.5, pipeRadius: meters * 0.2)
         case .pyramid:
-            geometry = SCNPyramid(width: meters, height: meters, length: meters)
+            geometry = SCNPyramid(width: meters, height: meters, length: meters * 2)
         case .tube:
             geometry = SCNTube(innerRadius: meters - meters/3, outerRadius: meters, height: meters * 2)
         }

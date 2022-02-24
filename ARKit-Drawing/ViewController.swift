@@ -21,20 +21,7 @@ class ViewController: UIViewController {
     var lastNode: SCNNode?
     
     /// Minimum distance between objects placed when moving
-    var minimumDistance: Float {
-        if selectedNode != nil {
-            
-            let min = selectedNode!.boundingBox.min
-            let max = selectedNode!.boundingBox.max
-            let x = (max.x - min.x)
-            let y = (max.y - min.y)
-            let z = (max.z - min.z)
-           
-            return sqrtf(x*x + y*y + z*z)
-        } else {
-            return 0.05
-        }
-    }
+    var minimumDistance: Float = 0.05
     
     enum ObjectPlacementMode {
         case freeform, plane, image
@@ -105,7 +92,7 @@ class ViewController: UIViewController {
 
             guard minimumDistance < distanceBetweenNodes else { return }
 //            print(minimumDistance, distanceBetweenNodes)
-
+            
         }
         
         // Clone node for creating separate copies of the object
@@ -119,6 +106,13 @@ class ViewController: UIViewController {
 
         // Add cloned node to the scene
         parentNode.addChildNode(clonedNode)
+    }
+    
+    func addNodeToImage(_ node: SCNNode, at point: CGPoint) {
+        guard let result = sceneView.hitTest(point, options: [:]).first else { return }
+        guard result.node.name == "image" else { return }
+        node.eulerAngles.x = .pi/2
+        addNode(node, to: result.node)
     }
     
     func addNodeToSceneRoot(_ node: SCNNode) {
@@ -142,11 +136,12 @@ class ViewController: UIViewController {
         case .plane:
             addNode(selectedNode, at: point)
         case .image:
-            break
+            addNodeToImage(selectedNode, at: point)
         }
     }
     
     func reloadConfiguration() {
+        configuration.detectionImages = ARReferenceImage.referenceImages(inGroupNamed: "AR Resources", bundle: nil)
         configuration.planeDetection = .horizontal
         sceneView.session.run(configuration)
     }
@@ -205,6 +200,17 @@ extension ViewController: OptionsViewControllerDelegate {
     func objectSelected(node: SCNNode) {
         dismiss(animated: true, completion: nil)
         selectedNode = node
+        
+        // Defining minimum distance by bounding box X axis of selected object
+        if let child = selectedNode?.childNodes.first {
+            let childX = child.boundingBox.max.x - child.boundingBox.min.x
+            let parentX = selectedNode!.boundingBox.max.x - selectedNode!.boundingBox.min.x
+            
+            minimumDistance = childX <= parentX ? childX : parentX
+        } else {
+            minimumDistance = selectedNode!.boundingBox.max.x - selectedNode!.boundingBox.min.x
+        }
+        
     }
     
     func togglePlaneVisualization() {
@@ -224,24 +230,31 @@ extension ViewController: OptionsViewControllerDelegate {
 
 extension ViewController: ARSCNViewDelegate {
     
-    func createFloor(planeAnchor: ARPlaneAnchor) -> SCNNode {
-        // Get estimated plane size
-        let extent = planeAnchor.extent
-        let width = CGFloat(extent.x)
-        let height = CGFloat(extent.z)
+    func createFloor(with size: CGSize, opacity: CGFloat = 0.5) -> SCNNode {
         
-        let plane = SCNPlane(width: width, height: height)
-        plane.firstMaterial?.diffuse.contents = UIColor(red: 0, green: 1, blue: 0, alpha: 0.5)
-        
+        let plane = SCNPlane(width: size.width, height: size.height)
+//        plane.firstMaterial?.diffuse.contents = UIColor(red: 0, green: 1, blue: 0, alpha: opacity)
+        plane.firstMaterial?.diffuse.contents = UIColor.green.withAlphaComponent(opacity)
         let planeNode = SCNNode(geometry: plane)
         planeNode.eulerAngles.x = -.pi/2
         
         return planeNode
     }
     
+    
+    func nodeAdded(_ node: SCNNode, for anchor: ARImageAnchor) {
+        // Put a plane at the image
+        let size = anchor.referenceImage.physicalSize
+        let coverNode = createFloor(with: size, opacity: 0.01)
+        coverNode.name = "image"
+        node.addChildNode(coverNode)
+    }
+    
     // Add plane node found
     func nodeAdded(_ node: SCNNode, for anchor: ARPlaneAnchor) {
-        let planeNode = createFloor(planeAnchor: anchor)
+        let extent = anchor.extent
+        let size = CGSize(width: CGFloat(extent.x), height: CGFloat(extent.z))
+        let planeNode = createFloor(with: size)
         planeNode.isHidden = arePlanesHidden
         
         // Add plane node to the list of plane nodes
@@ -249,8 +262,11 @@ extension ViewController: ARSCNViewDelegate {
         
         node.addChildNode(planeNode)
     }
+    
     func renderer(_ renderer: SCNSceneRenderer, didAdd node: SCNNode, for anchor: ARAnchor) {
         switch anchor {
+        case let imageAnchor as ARImageAnchor:
+            nodeAdded(node, for: imageAnchor)
         case let planeAnchor as ARPlaneAnchor:
             nodeAdded(node, for: planeAnchor)
         default:
@@ -260,6 +276,8 @@ extension ViewController: ARSCNViewDelegate {
     
     func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
         switch anchor {
+        case is ARImageAnchor:
+            break
         case let planeAnchor as ARPlaneAnchor:
             updateFloor(for: node, anchor: planeAnchor)
         default:
