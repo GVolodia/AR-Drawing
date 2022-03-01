@@ -77,10 +77,13 @@ class OptionsContainerViewController: UIViewController, UINavigationControllerDe
         let options = availableScenes.map { Option(name: $0, option: $0, showsDisclosureIndicator: false) }
         let selector = OptionSelectorViewController(options: options)
         selector.optionSelectionCallback = { [unowned self] name in
-
+            
             let nameWithoutExtension = name.replacingOccurrences(of: ".scn", with: "")
-            let scene = SCNScene(named: "\(resourceFolder)/\(nameWithoutExtension)/\(name)")!
-            self.delegate?.objectSelected(node: scene.rootNode)
+            if nameWithoutExtension != "lighting" {
+                let scene = SCNScene(named: "\(resourceFolder)/\(nameWithoutExtension)/\(name)")!
+                self.delegate?.objectSelected(node: scene.rootNode)
+                
+            }
         }
         return selector
     }
